@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "ngm"
+version = "0.1.0"
+description = "Nepal Government Modernization - Judicial Data Scrapers"
+authors = ["Jawafdehi Team"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+scrapy = "^2.14.0"
+beautifulsoup4 = "^4.14.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
