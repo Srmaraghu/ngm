@@ -6,9 +6,6 @@ __pycache__/
 *.egg-info/
 dist/
 
-# Poetry
-poetry.lock
-
 # Output
 output/
 
@@ -20,3 +17,5 @@ output/
 
 # OS
 .DS_Store
+
+.env

@@ -66,7 +66,7 @@ class DistrictCourtCasesSpider(scrapy.Spider):
     base_url = "https://supremecourt.gov.np/weekly_dainik/pesi/daily/{district_id}"
     
     custom_settings = {
-        "CONCURRENT_REQUESTS": CONCURRENT_REQUESTS,
+        "CONCURRENT_REQUESTS": CONCURRENT_REQUESTS * 4,
         "DOWNLOAD_TIMEOUT": DOWNLOAD_TIMEOUT,
         "USER_AGENT": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
         "RETRY_TIMES": 3,

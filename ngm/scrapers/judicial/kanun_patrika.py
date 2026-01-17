@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
+import os
 import scrapy
 from scrapy.crawler import CrawlerProcess
 from scrapy.pipelines.files import FilesPipeline
-from ..config import OUTPUT_DIR, CONCURRENT_REQUESTS, DOWNLOAD_TIMEOUT
-
-KANUN_PATRIKA_DIR = OUTPUT_DIR / "supreme-court" / "kanun-patrika"
+from ..config import FILES_STORE, DEFAULT_SETTINGS
+from botocore.client import Config
 
 
 class PDFPipeline(FilesPipeline):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+    
     def file_path(self, request, response=None, info=None, *, item=None):
         metadata = item.get('metadata', {})
         file_id = request.url.split("/")[-1].replace(".pdf", "")
@@ -24,7 +27,8 @@ class PDFPipeline(FilesPipeline):
     def item_completed(self, results, item, info):
         for ok, result in results:
             if ok:
-                print(f"Downloaded: {result['path']}")
+                file_path = result['path']
+                print(f"Downloaded: {file_path}")
             else:
                 print(f"Failed: {item['file_urls'][0]}")
         return item
@@ -34,12 +38,9 @@ class NepalLawJournalSpider(scrapy.Spider):
     name = "nepal_law_journal"
     start_urls = ["https://supremecourt.gov.np/web/nkpold"]
     custom_settings = {
+        **DEFAULT_SETTINGS,
         "ITEM_PIPELINES": {PDFPipeline: 1},
-        "FILES_STORE": str(KANUN_PATRIKA_DIR),
-        "CONCURRENT_REQUESTS": CONCURRENT_REQUESTS,
-        "MEDIA_ALLOW_REDIRECTS": True,
-        "USER_AGENT": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "DOWNLOAD_TIMEOUT": DOWNLOAD_TIMEOUT,
+        "FILES_STORE": os.path.join(FILES_STORE, "supreme-court/kanun-patrika/"),
     }
 
     def parse(self, response):
@@ -66,7 +67,6 @@ class NepalLawJournalSpider(scrapy.Spider):
 
 
 if __name__ == "__main__":
-    KANUN_PATRIKA_DIR.mkdir(parents=True, exist_ok=True)
     process = CrawlerProcess({"LOG_LEVEL": "INFO"})
     process.crawl(NepalLawJournalSpider)
     process.start()
