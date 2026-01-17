@@ -1,0 +1,43 @@
+name: Kanun Patrika Scraper
+
+on:
+  schedule:
+    # Run every 7 days at 2:00 AM UTC (7:45 AM Nepal Time)
+    - cron: '0 2 */7 * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+      
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+        working-directory: services/NepalGovernmentModernization
+      
+      - name: Run Kanun Patrika scraper
+        run: poetry run python -m ngm.scrapers.judicial.kanun_patrika
+        working-directory: services/NepalGovernmentModernization
