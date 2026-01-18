@@ -3,7 +3,9 @@ Kanun Patrika (Nepal Law Journal) Spider
 
 Scrapes PDF files of Nepal Law Journal from Supreme Court website.
 """
+import os
 import scrapy
+from ngm.ngscrape.settings import FILES_STORE
 
 
 class KanunPatrikaSpider(scrapy.Spider):
@@ -15,13 +17,9 @@ class KanunPatrikaSpider(scrapy.Spider):
     
     custom_settings = {
         "ITEM_PIPELINES": {
-            "ngm.pipelines.KanunPatrikaPipeline": 1,
+            "ngm.ngscrape.pipelines.KanunPatrikaPipeline": 1,
         },
-        "FILES_STORE": "output/supreme-court/kanun-patrika/",
-        "CONCURRENT_REQUESTS": 2,
-        "DOWNLOAD_TIMEOUT": 600,
-        "USER_AGENT": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "MEDIA_ALLOW_REDIRECTS": True,
+        "FILES_STORE": os.path.join(FILES_STORE, "supreme-court/kanun-patrika/"),
     }
 
     def parse(self, response):

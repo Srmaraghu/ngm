@@ -39,7 +39,8 @@ jobs:
         run: poetry install --no-interaction --no-root
       
       - name: Run Kanun Patrika scraper
-        run: poetry run python -m ngm.scrapers.judicial.kanun_patrika
+        working-directory: ./ngm
+        run: poetry run scrapy crawl kanun_patrika
         env:
           AWS_ENDPOINT_URL: 'https://4c96557d73194d4f245ba23bd6063ad5.r2.cloudflarestorage.com'
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

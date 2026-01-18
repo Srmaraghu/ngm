@@ -7,7 +7,20 @@
 #     https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 
+import logging
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+FILES_STORE = os.getenv("FILES_STORE", "output")
+
+logging.getLogger('protego._protego').setLevel(logging.INFO)
+
 BOT_NAME = "ngscrape"
+
+# Set log level
+LOG_LEVEL = "INFO"
 
 SPIDER_MODULES = ["ngscrape.spiders"]
 NEWSPIDER_MODULE = "ngscrape.spiders"
@@ -16,15 +29,20 @@ ADDONS = {}
 
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
-#USER_AGENT = "ngscrape (+http://www.yourdomain.com)"
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # Obey robots.txt rules
 ROBOTSTXT_OBEY = True
 
+TELNETCONSOLE_ENABLED = False
+
 # Concurrency and throttling settings
-#CONCURRENT_REQUESTS = 16
-CONCURRENT_REQUESTS_PER_DOMAIN = 1
+CONCURRENT_REQUESTS = 4
+# CONCURRENT_REQUESTS_PER_DOMAIN = 3
 DOWNLOAD_DELAY = 1
+
+DOWNLOAD_TIMEOUT = 600
+
 
 # Disable cookies (enabled by default)
 #COOKIES_ENABLED = False
