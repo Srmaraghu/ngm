@@ -5,16 +5,35 @@ from scrapy.crawler import CrawlerProcess
 from scrapy.http import FormRequest
 from bs4 import BeautifulSoup
 from nepali.datetime import nepalidate
-from ..config import FILES_STORE, DEFAULT_SETTINGS
-from ..utils import normalize_whitespace, normalize_date, nepali_to_roman_numerals, fix_parenthesis_spacing, parse_judges
+from ngm.ngscrape.settings import FILES_STORE, CONCURRENT_REQUESTS, DOWNLOAD_TIMEOUT
+from ngm.utils.normalizer import (
+    normalize_whitespace,
+    normalize_date,
+    nepali_to_roman_numerals,
+    fix_parenthesis_spacing,
+)
 
+
+def parse_judges(judges_text):
+    """Parse judges text into a list of strings (one per judge)
+    
+    Expected format:
+    अध्यक्ष माननीय न्यायाधीश श्री सुदर्शनदेव भट्ट
+    सदस्य माननीय न्यायाधीश श्री हेमन्त रावल
+    """
+    if not judges_text:
+        return []
+    
+    # Split by newlines and normalize whitespace on each line
+    lines = [normalize_whitespace(line) for line in judges_text.split('\n') if line.strip()]
+    
+    return lines
 
 class SpecialCourtCasesSpider(scrapy.Spider):
     name = "special_court_cases"
     base_url = "https://supremecourt.gov.np/special/syspublic.php?d=reports&f=daily_public"
     
     custom_settings = {
-        **DEFAULT_SETTINGS,
         "FEEDS": {
             os.path.join(FILES_STORE, "supreme-court/special-court-cases/cases.jsonl"): {
                 "format": "jsonlines",

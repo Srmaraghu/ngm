@@ -22,8 +22,8 @@ BOT_NAME = "ngscrape"
 # Set log level
 LOG_LEVEL = "INFO"
 
-SPIDER_MODULES = ["ngscrape.spiders"]
-NEWSPIDER_MODULE = "ngscrape.spiders"
+SPIDER_MODULES = ["ngm.ngscrape.spiders"]
+NEWSPIDER_MODULE = "ngm.ngscrape.spiders"
 
 ADDONS = {}
 
@@ -34,8 +34,6 @@ USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36
 # Obey robots.txt rules
 ROBOTSTXT_OBEY = True
 
-TELNETCONSOLE_ENABLED = False
-
 # Concurrency and throttling settings
 CONCURRENT_REQUESTS = 4
 # CONCURRENT_REQUESTS_PER_DOMAIN = 3
@@ -43,12 +41,14 @@ DOWNLOAD_DELAY = 1
 
 DOWNLOAD_TIMEOUT = 600
 
+RETRY_TIMES = 3
+RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429]
 
 # Disable cookies (enabled by default)
 #COOKIES_ENABLED = False
 
 # Disable Telnet Console (enabled by default)
-#TELNETCONSOLE_ENABLED = False
+TELNETCONSOLE_ENABLED = False
 
 # Override the default request headers:
 #DEFAULT_REQUEST_HEADERS = {

@@ -6,11 +6,16 @@ from scrapy.crawler import CrawlerProcess
 from scrapy.http import FormRequest
 from bs4 import BeautifulSoup
 from nepali.datetime import nepalidate
-from ..config import OUTPUT_DIR, CONCURRENT_REQUESTS, DOWNLOAD_TIMEOUT
-from ..utils import normalize_whitespace, normalize_date, nepali_to_roman_numerals, fix_parenthesis_spacing
+from ngm.ngscrape.settings import CONCURRENT_REQUESTS, DOWNLOAD_TIMEOUT, FILES_STORE
+from ngm.utils.normalizer import (
+    normalize_whitespace,
+    normalize_date,
+    nepali_to_roman_numerals,
+    fix_parenthesis_spacing
+)
 
+OUTPUT_DIR = Path(FILES_STORE) if isinstance(FILES_STORE, str) else Path(FILES_STORE)
 SUPREME_COURT_DIR = OUTPUT_DIR / "court-cases" / "supremecourt"
-JOBDIR = SUPREME_COURT_DIR / ".scrapy_state"
 CHECKPOINT_FILE = SUPREME_COURT_DIR / ".checkpoint.json"
 
 
@@ -19,11 +24,6 @@ class SupremeCourtCasesSpider(scrapy.Spider):
     base_url = "https://supremecourt.gov.np/lic/sys.php?d=reports&f=weekly_suppli_public"
     
     custom_settings = {
-        "CONCURRENT_REQUESTS": 2,
-        "DOWNLOAD_DELAY": 2,
-        "DOWNLOAD_TIMEOUT": DOWNLOAD_TIMEOUT,
-        "USER_AGENT": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "JOBDIR": str(JOBDIR),
         # Retry configuration
         "RETRY_ENABLED": True,
         "RETRY_TIMES": 3,

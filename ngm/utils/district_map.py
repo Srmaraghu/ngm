@@ -1,4 +1,4 @@
-[
+DISTRICT_COURTS = [
   {
     "district": "अछाम",
     "code_name": "achhamdc",

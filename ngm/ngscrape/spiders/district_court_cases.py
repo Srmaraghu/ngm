@@ -16,23 +16,13 @@ from scrapy.crawler import CrawlerProcess
 from scrapy.http import FormRequest
 from bs4 import BeautifulSoup
 from nepali.datetime import nepalidate
-from ..config import OUTPUT_DIR, CONCURRENT_REQUESTS, DOWNLOAD_TIMEOUT
-from ..utils import normalize_whitespace, normalize_date, nepali_to_roman_numerals
+from ngm.ngscrape.settings import CONCURRENT_REQUESTS, DOWNLOAD_TIMEOUT, FILES_STORE
+from ngm.utils.normalizer import normalize_whitespace, normalize_date, nepali_to_roman_numerals
+from ngm.utils.district_map import DISTRICT_COURTS
 
 # Base output directory for district court cases
+OUTPUT_DIR = Path(FILES_STORE) if isinstance(FILES_STORE, str) else Path(FILES_STORE)
 DISTRICT_COURTS_DIR = OUTPUT_DIR / "court-cases"
-
-# Load district courts configuration
-DISTRICT_COURTS_JSON = Path(__file__).parent / "district_courts.json"
-
-
-
-def load_district_courts():
-    """Load district courts from JSON file"""
-    with open(DISTRICT_COURTS_JSON, 'r', encoding='utf-8') as f:
-        courts = json.load(f)
-    # Filter out courts without code_name
-    return [c for c in courts if c.get('code_name')]
 
 
 def get_checkpoint_file(code_name: str) -> Path:
@@ -65,17 +55,10 @@ class DistrictCourtCasesSpider(scrapy.Spider):
     name = "district_court_cases"
     base_url = "https://supremecourt.gov.np/weekly_dainik/pesi/daily/{district_id}"
     
-    custom_settings = {
-        "CONCURRENT_REQUESTS": CONCURRENT_REQUESTS * 4,
-        "DOWNLOAD_TIMEOUT": DOWNLOAD_TIMEOUT,
-        "USER_AGENT": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        "RETRY_TIMES": 3,
-        "RETRY_HTTP_CODES": [500, 502, 503, 504, 408, 429],
-    }
-    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.district_courts = load_district_courts()
+        # Filter out courts without code_name
+        self.district_courts = [c for c in DISTRICT_COURTS if c.get('code_name')]
         # Per-court checkpoint tracking
         self.checkpoints = {}
 

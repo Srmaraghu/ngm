@@ -1,6 +1,4 @@
-"""Utility functions for web scraping"""
 import re
-
 
 def normalize_whitespace(text):
     """Normalize all Unicode whitespace characters to regular spaces and clean up"""
@@ -66,17 +64,3 @@ def fix_parenthesis_spacing(text):
     return text
 
 
-def parse_judges(judges_text):
-    """Parse judges text into a list of strings (one per judge)
-    
-    Expected format:
-    अध्यक्ष माननीय न्यायाधीश श्री सुदर्शनदेव भट्ट
-    सदस्य माननीय न्यायाधीश श्री हेमन्त रावल
-    """
-    if not judges_text:
-        return []
-    
-    # Split by newlines and normalize whitespace on each line
-    lines = [normalize_whitespace(line) for line in judges_text.split('\n') if line.strip()]
-    
-    return lines

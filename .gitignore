@@ -7,7 +7,8 @@ __pycache__/
 dist/
 
 # Output
-output/
+/output
+/ngm/output/
 
 # IDE
 .vscode/
