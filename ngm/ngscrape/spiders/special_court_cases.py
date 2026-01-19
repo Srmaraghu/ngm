@@ -1,139 +1,68 @@
 import scrapy
-import os
 from datetime import datetime, timedelta
+from typing import List, Tuple
 from scrapy.crawler import CrawlerProcess
 from scrapy.http import FormRequest
 from bs4 import BeautifulSoup
 from nepali.datetime import nepalidate
-from ngm.ngscrape.settings import FILES_STORE, CONCURRENT_REQUESTS, DOWNLOAD_TIMEOUT
+import pytz
 from ngm.utils.normalizer import (
     normalize_whitespace,
     normalize_date,
     nepali_to_roman_numerals,
     fix_parenthesis_spacing,
 )
+from ngm.database.models import get_engine, get_session, init_db, CourtCase, CourtCaseHearing
+from ngm.utils.db_helpers import get_scraped_dates, mark_date_scraped, convert_bs_to_ad, CaseCache
+from ngm.ngscrape.constants import SCRAPE_LOOKBACK_DAYS, SCRAPE_OFFSET_DAYS
 
+COURT_ID = "special"
+KATHMANDU_TZ = pytz.timezone('Asia/Kathmandu')
 
-def parse_judges(judges_text):
-    """Parse judges text into a list of strings (one per judge)
-    
-    Expected format:
-    अध्यक्ष माननीय न्यायाधीश श्री सुदर्शनदेव भट्ट
-    सदस्य माननीय न्यायाधीश श्री हेमन्त रावल
-    """
-    if not judges_text:
-        return []
-    
-    # Split by newlines and normalize whitespace on each line
-    lines = [normalize_whitespace(line) for line in judges_text.split('\n') if line.strip()]
-    
-    return lines
 
 class SpecialCourtCasesSpider(scrapy.Spider):
     name = "special_court_cases"
     base_url = "https://supremecourt.gov.np/special/syspublic.php?d=reports&f=daily_public"
     
     custom_settings = {
-        "FEEDS": {
-            os.path.join(FILES_STORE, "supreme-court/special-court-cases/cases.jsonl"): {
-                "format": "jsonlines",
-                "encoding": "utf-8",
-                "overwrite": False,
-            }
-        },
+        "RETRY_ENABLED": True,
+        "RETRY_TIMES": 3,
+        "RETRY_HTTP_CODES": [500, 502, 503, 504, 408, 429],
+        "RETRY_PRIORITY_ADJUST": -1,
     }
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Track processed dates in memory during this run to avoid duplicate R1 requests
-        self.processed_dates_this_run = set()
-        # Load dates that have already been scraped
-        self.processed_dates = self.load_processed_dates()
-
-    def load_processed_dates(self):
-        """
-        Load dates that have already been scraped from the JSONL file.
-        Returns a set of date_ad strings that have been fully processed.
-        Works for both local and S3/R2 storage.
-        """
-        processed = set()
-        jsonl_path = os.path.join(FILES_STORE, "supreme-court/special-court-cases/cases.jsonl")
-        
-        try:
-            # For S3/R2 storage, we need to use boto3 to read the file
-            if FILES_STORE.startswith('s3://'):
-                try:
-                    import boto3
-                    import io
-                    import json
-                    
-                    # Parse S3 path
-                    s3_path = jsonl_path.replace('s3://', '')
-                    bucket_name = s3_path.split('/')[0]
-                    key = '/'.join(s3_path.split('/')[1:])
-                    
-                    # Get S3 client
-                    s3_client = boto3.client('s3')
-                    
-                    # Download and read the file
-                    response = s3_client.get_object(Bucket=bucket_name, Key=key)
-                    content = response['Body'].read().decode('utf-8')
-                    
-                    # Parse JSONL and extract dates
-                    for line in content.split('\n'):
-                        if line.strip():
-                            case = json.loads(line)
-                            processed.add(case.get('date_ad'))
-                    
-                    self.logger.info(f"Loaded {len(processed)} processed dates from S3")
-                    
-                except Exception as e:
-                    self.logger.warning(f"Could not load from S3 (file may not exist yet): {e}")
-            
-            # For local storage
-            else:
-                if os.path.exists(jsonl_path):
-                    import json
-                    with open(jsonl_path, 'r', encoding='utf-8') as f:
-                        for line in f:
-                            if line.strip():
-                                case = json.loads(line)
-                                processed.add(case.get('date_ad'))
-                    
-                    self.logger.info(f"Loaded {len(processed)} processed dates from local storage")
-                else:
-                    self.logger.info("No existing data file found, starting fresh")
-        
-        except Exception as e:
-            self.logger.warning(f"Error loading processed dates: {e}")
-        
-        return processed
+        self.engine = get_engine()
+        init_db(self.engine)
+        self.session = get_session(self.engine)
+        self.case_cache = CaseCache()
+        self.scraped_dates = get_scraped_dates(self.session, COURT_ID)
+        self.bench_types_by_date = {}
+        self._bench_counter = {}
+        self._data_by_date = {}
 
     def start_requests(self):
-        """Generate requests for the past 5 years, going backwards from today"""
-        end_date = datetime.now().date() - timedelta(days=2)  # 2 days ago
-        start_date = end_date - timedelta(days=5*365)  # 5 years ago
+        now_ktm = datetime.now(KATHMANDU_TZ)
+        end_date = now_ktm.date() - timedelta(days=SCRAPE_OFFSET_DAYS)
+        start_date = end_date - timedelta(days=SCRAPE_LOOKBACK_DAYS)
         
         current_date = end_date
         while current_date >= start_date:
-            date_str = current_date.isoformat()
-            
-            # Skip if this date has already been processed
-            if date_str in self.processed_dates:
-                self.logger.debug(f"Skipping already processed date: {date_str}")
-                current_date -= timedelta(days=1)
-                continue
-            
-            # Convert to Nepali date
             try:
                 nepali_date = nepalidate.from_date(current_date)
                 syy = str(nepali_date.year)
                 smm = str(nepali_date.month).zfill(2)
                 sdd = str(nepali_date.day).zfill(2)
+                date_bs = f"{syy}-{smm}-{sdd}"
                 
-                self.logger.info(f"Processing date: {date_str} -> BS {syy}/{smm}/{sdd}")
+                if date_bs in self.scraped_dates:
+                    self.logger.debug(f"Skipping already processed date: {date_bs}")
+                    current_date -= timedelta(days=1)
+                    continue
                 
-                # R1: First request to get bench types for this date
+                self.logger.info(f"Processing date: {current_date} -> BS {date_bs}")
+                
                 yield FormRequest(
                     url=self.base_url,
                     formdata={
@@ -144,7 +73,7 @@ class SpecialCourtCasesSpider(scrapy.Spider):
                     },
                     callback=self.parse_bench_types,
                     meta={
-                        'date_ad': date_str,
+                        'date_bs': date_bs,
                         'syy': syy,
                         'smm': smm,
                         'sdd': sdd
@@ -152,50 +81,40 @@ class SpecialCourtCasesSpider(scrapy.Spider):
                     dont_filter=True
                 )
             except Exception as e:
-                self.logger.error(f"Error converting date {date_str}: {e}")
+                self.logger.error(f"Error converting date {current_date}: {e}")
             
             current_date -= timedelta(days=1)
 
     def parse_bench_types(self, response):
-        """Parse the bench types from R1 response and checkpoint on date"""
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        date_ad = response.meta['date_ad']
+        date_bs = response.meta['date_bs']
         syy = response.meta['syy']
         smm = response.meta['smm']
         sdd = response.meta['sdd']
         
-        # Mark this date as processed for this run
-        if date_ad in self.processed_dates_this_run:
-            self.logger.debug(f"Date {date_ad} already processed in this run, skipping")
-            return
-        
-        self.processed_dates_this_run.add(date_ad)
-        
-        # Find the bench_type select element
         bench_select = soup.find('select', {'name': 'bench_type'})
         
         if not bench_select:
-            self.logger.info(f"No bench types found for date {date_ad} (BS {syy}/{smm}/{sdd})")
+            self.logger.info(f"No bench types found for date {date_bs}")
+            self._save_cases_and_hearings([], date_bs)
             return
         
-        # Extract bench type options with both value and label
         bench_options = bench_select.find_all('option')
         benches = []
         
         for option in bench_options:
             value = option.get('value', '').strip()
             label = option.get_text(strip=True)
-            if value:  # Skip empty options
+            if value:
                 benches.append({'value': value, 'label': label})
         
-        self.logger.info(f"Found {len(benches)} bench types for date {date_ad}")
+        self.logger.info(f"Found {len(benches)} bench types for date {date_bs}")
+        self.bench_types_by_date[date_bs] = len(benches)
         
-        # Find the yo hidden input value
         yo_input = soup.find('input', {'name': 'yo', 'type': 'hidden'})
         yo_value = yo_input.get('value', '1') if yo_input else '1'
         
-        # R2: Request each bench type
         for bench in benches:
             yield FormRequest(
                 url=self.base_url,
@@ -209,75 +128,26 @@ class SpecialCourtCasesSpider(scrapy.Spider):
                 },
                 callback=self.parse_cases,
                 meta={
-                    'date_ad': date_ad,
+                    'date_bs': date_bs,
                     'syy': syy,
                     'smm': smm,
                     'sdd': sdd,
                     'bench_type': bench['value'],
-                    'bench_label': bench['label']
+                    'bench_label': bench['label'],
+                    'total_benches': len(benches)
                 },
                 dont_filter=True
             )
 
-    def parse_cases(self, response):
-        """Parse the case details from R2 bench response and yield items for feed export"""
-        soup = BeautifulSoup(response.text, 'html.parser')
+    def _extract_case_data(self, rows, date_bs, bench_type, bench_label, court_number, judges_text, footer_text) -> List[Tuple[CourtCase, CourtCaseHearing]]:
+        data: List[Tuple[CourtCase, CourtCaseHearing]] = []
         
-        date_ad = response.meta['date_ad']
-        syy = response.meta['syy']
-        smm = response.meta['smm']
-        sdd = response.meta['sdd']
-        bench_type = response.meta['bench_type']
-        bench_label = response.meta['bench_label']
-        
-        # Extract court number (इजलास नं)
-        court_number_elem = soup.find('font', string=lambda x: x and 'इजलास' in x and 'नं' in x)
-        court_number = normalize_whitespace(court_number_elem.get_text()) if court_number_elem else ""
-        
-        # Extract judges - look for the bold font containing judge names
-        judges_text = ""
-        # Find all font tags with size="2" and bold
-        for font_tag in soup.find_all('font', {'size': '2'}):
-            text = font_tag.get_text(strip=True)
-            if 'अध्यक्ष माननीय न्यायाधीश' in text or 'सदस्य माननीय न्यायाधीश' in text:
-                # Get the parent td to capture all judge text
-                parent_td = font_tag.find_parent('td')
-                if parent_td:
-                    # Extract text preserving line breaks from <br> tags
-                    # Replace <br> tags with newlines before extracting text
-                    for br in parent_td.find_all('br'):
-                        br.replace_with('\n')
-                    # Get text without normalizing whitespace (to preserve newlines)
-                    judges_text = parent_td.get_text()
-                    break
-        
-        # Extract footer (इजलास अधिकृत info)
-        footer_text = ""
-        # Find the last table which contains footer info
-        all_tables = soup.find_all('table', {'width': '100%', 'border': '0'})
-        if all_tables:
-            footer_table = all_tables[-1]
-            # Extract and clean up footer text
-            footer_text = normalize_whitespace(footer_table.get_text())
-        
-        # Extract case table
-        case_table = soup.find('table', {'width': '100%', 'border': '1'})
-        
-        if not case_table:
-            self.logger.warning(f"No case table found for bench {bench_type} on {date_ad}")
-            return
-        
-        # Parse table rows
-        rows = case_table.find_all('tr')[1:]  # Skip header row
-        
-        cases_found = 0
         for row in rows:
             cells = row.find_all('td')
             
             if len(cells) < 11:
                 continue
             
-            # Extract case data and normalize whitespace
             serial_no = nepali_to_roman_numerals(normalize_whitespace(cells[0].get_text()))
             category = normalize_whitespace(cells[1].get_text())
             registration_date = normalize_date(normalize_whitespace(cells[2].get_text()))
@@ -290,44 +160,110 @@ class SpecialCourtCasesSpider(scrapy.Spider):
             case_status = normalize_whitespace(cells[9].get_text())
             decision_type = normalize_whitespace(cells[10].get_text())
             
-            # Skip if no case number
             if not case_number:
                 continue
             
-            # Parse judges into structured list
-            judges_list = parse_judges(judges_text)
+            judge_names = '\n'.join([normalize_whitespace(line) for line in judges_text.split('\n') if line.strip()]) if judges_text else None
             
-            # Normalize bench_label spacing
-            bench_label_normalized = normalize_whitespace(bench_label)
+            case = self.case_cache.get(case_number, COURT_ID)
+            if not case:
+                case = CourtCase(
+                    case_number=case_number,
+                    court_identifier=COURT_ID,
+                    registration_date_bs=registration_date,
+                    registration_date_ad=convert_bs_to_ad(registration_date),
+                    case_type=case_type,
+                    category=category,
+                    plaintiff=plaintiff,
+                    defendant=defendant,
+                    original_case_number=original_case_number
+                )
+                self.case_cache.set(case)
             
-            # Yield case data for feed export
-            cases_found += 1
-            yield {
-                'case_number': case_number,
-                'date_ad': date_ad,
-                'date_bs': f"{syy}-{smm}-{sdd}",
-                'bench_type': bench_type,
-                'bench_label': bench_label_normalized,
-                'court_number': court_number,
-                'judges': judges_list,
-                'serial_no': serial_no,
-                'category': category,
-                'registration_date': registration_date,
-                'case_type': case_type,
-                'plaintiff': plaintiff,
-                'defendant': defendant,
-                'original_case_number': original_case_number,
-                'remarks': remarks,
-                'case_status': case_status,
-                'decision_type': decision_type,
-                'footer': footer_text,
-                'scraped_at': datetime.now().isoformat()
-            }
+            hearing = CourtCaseHearing(
+                case_number=case_number,
+                court_identifier=COURT_ID,
+                hearing_date_bs=date_bs,
+                hearing_date_ad=convert_bs_to_ad(date_bs),
+                bench_type=bench_type,
+                serial_no=serial_no,
+                judge_names=judge_names,
+                case_status=case_status,
+                decision_type=decision_type,
+                remarks=remarks,
+                scraped_at=datetime.now(KATHMANDU_TZ).replace(tzinfo=None),
+                extra_data={
+                    'bench_label': normalize_whitespace(bench_label),
+                    'court_number': court_number,
+                    'footer': footer_text
+                }
+            )
+            
+            data.append((case, hearing))
         
-        self.logger.info(f"Yielded {cases_found} cases for bench {bench_type} on {date_ad}")
+        return data
+    
+    def _save_cases_and_hearings(self, data: List[Tuple[CourtCase, CourtCaseHearing]], date_bs: str):
+        with self.session.begin():
+            for case, hearing in data:
+                self.session.merge(case)
+                self.session.add(hearing)
+            
+            bench_count = self.bench_types_by_date.get(date_bs, 0)
+            mark_date_scraped(self.session, COURT_ID, date_bs, f"{bench_count} benches")
 
+    def _handle_bench_completion(self, date_bs: str, total_benches: int, new_data: List[Tuple[CourtCase, CourtCaseHearing]]):
+        self._bench_counter[date_bs] = self._bench_counter.get(date_bs, 0) + 1
+        
+        if self._bench_counter[date_bs] >= total_benches:
+            all_data = self._data_by_date.get(date_bs, [])
+            all_data.extend(new_data)
+            self._save_cases_and_hearings(all_data, date_bs)
+            self.logger.info(f"Saved all cases for date {date_bs}")
+            self._data_by_date.pop(date_bs, None)
+        else:
+            if date_bs not in self._data_by_date:
+                self._data_by_date[date_bs] = []
+            self._data_by_date[date_bs].extend(new_data)
 
-if __name__ == "__main__":
-    process = CrawlerProcess({"LOG_LEVEL": "INFO"})
-    process.crawl(SpecialCourtCasesSpider)
-    process.start()
+    def parse_cases(self, response):
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        date_bs = response.meta['date_bs']
+        bench_type = response.meta['bench_type']
+        bench_label = response.meta['bench_label']
+        total_benches = response.meta['total_benches']
+        
+        court_number_elem = soup.find('font', string=lambda x: x and 'इजलास' in x and 'नं' in x)
+        court_number = normalize_whitespace(court_number_elem.get_text()) if court_number_elem else ""
+        
+        judges_text = ""
+        for font_tag in soup.find_all('font', {'size': '2'}):
+            text = font_tag.get_text(strip=True)
+            if 'अध्यक्ष माननीय न्यायाधीश' in text or 'सदस्य माननीय न्यायाधीश' in text:
+                parent_td = font_tag.find_parent('td')
+                if parent_td:
+                    for br in parent_td.find_all('br'):
+                        br.replace_with('\n')
+                    judges_text = parent_td.get_text()
+                    break
+        
+        footer_text = ""
+        all_tables = soup.find_all('table', {'width': '100%', 'border': '0'})
+        if all_tables:
+            footer_table = all_tables[-1]
+            footer_text = normalize_whitespace(footer_table.get_text())
+        
+        case_table = soup.find('table', {'width': '100%', 'border': '1'})
+        
+        if not case_table:
+            self.logger.warning(f"No case table found for bench {bench_type} on {date_bs}")
+            self._handle_bench_completion(date_bs, total_benches, [])
+            return
+        
+        rows = case_table.find_all('tr')[1:]
+        data = self._extract_case_data(rows, date_bs, bench_type, bench_label, court_number, judges_text, footer_text)
+        
+        self.logger.info(f"Extracted {len(data)} cases for bench {bench_type} on {date_bs}")
+        self._handle_bench_completion(date_bs, total_benches, data)
+

@@ -109,7 +109,7 @@ class CourtCase(Base):
     # Internal court ID (district courts)
     
     # Priority and processing
-    priority = Column(String(50), nullable=True)
+    priority = Column(String(400), nullable=True)
     # Example: "सरल" (simple/fast-track)
     
     # Audit fields
