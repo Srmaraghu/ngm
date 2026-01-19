@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup
 from nepali.datetime import nepalidate
 from ngm.ngscrape.settings import CONCURRENT_REQUESTS, DOWNLOAD_TIMEOUT, FILES_STORE
 from ngm.utils.normalizer import normalize_whitespace, normalize_date, nepali_to_roman_numerals
-from ngm.utils.district_map import DISTRICT_COURTS
+from ngm.utils.court_ids import DISTRICT_COURTS
 
 # Base output directory for district court cases
 OUTPUT_DIR = Path(FILES_STORE) if isinstance(FILES_STORE, str) else Path(FILES_STORE)

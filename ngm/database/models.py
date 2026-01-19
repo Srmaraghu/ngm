@@ -83,9 +83,11 @@ class CourtCase(Base):
     case_type = Column(String(200), nullable=True, index=True)
     # Example: "भ्रष्टाचार ( रिसवत(घुस) )", "चेक अनादर"
     
+    # फाट
     division = Column(String(100), nullable=True)
     # Example: "निवेदन ४", "रिट १"
     
+    # bench_type
     category = Column(String(100), nullable=True)
     # Example: "फाँट क", "फाँट ख"
     
@@ -109,12 +111,6 @@ class CourtCase(Base):
     # Priority and processing
     priority = Column(String(50), nullable=True)
     # Example: "सरल" (simple/fast-track)
-    
-    # Metadata - tracks first and last hearing dates
-    first_hearing_date_bs = Column(String(20), nullable=True)
-    first_hearing_date_ad = Column(Date, nullable=True)
-    last_hearing_date_bs = Column(String(20), nullable=True)
-    last_hearing_date_ad = Column(Date, nullable=True)
     
     # Audit fields
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -166,10 +162,10 @@ class CourtCaseHearing(Base):
     bench_type = Column(String(100), nullable=True)
     # Example: "संयुक्त इजलास", "एकल इजलास"
     
-    # Judges - simple text field, can contain multiple judges separated by commas or newlines
+    # Judges - simple text field, can contain multiple judges separated by newlines
     judge_names = Column(Text, nullable=True)
     # Example: "माननीय न्यायाधीश श्री कृतबहादुर वोहरा"
-    # Or: "अध्यक्ष माननीय न्यायाधीश श्री सुदर्शनदेव भट्ट, सदस्य माननीय न्यायाधीश श्री हेमन्त रावल"
+    # Or: "अध्यक्ष माननीय न्यायाधीश श्री सुदर्शनदेव भट्ट\n सदस्य माननीय न्यायाधीश श्री हेमन्त रावल"
     
     # Lawyers - simple text field
     lawyer_names = Column(Text, nullable=True)
@@ -252,6 +248,48 @@ Index('idx_hearing_judge_fts',
       postgresql_ops={'judge_names': 'gin_trgm_ops'})
 
 
+class CourtScrapedDate(Base):
+    """
+    Track which dates have been successfully scraped for each court.
+    
+    This allows spiders to resume from where they left off and avoid
+    re-scraping dates that have already been processed.
+    """
+    __tablename__ = "scraped_dates"
+    
+    # Primary key
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Court identifier
+    court_identifier = Column(
+        String(50), 
+        ForeignKey('courts.identifier'), 
+        nullable=False, 
+        index=True
+    )
+    
+    # Relationship
+    court = relationship("Court", backref="scraped_dates")
+    
+    # Date that was scraped (BS format)
+    date_bs = Column(String(20), nullable=False, index=True)
+
+    data = Column(Text, nullable=True)
+    
+    # Audit fields
+    scraped_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    def __repr__(self):
+        return f"<CourtScrapedDate(court={self.court_identifier}, date_bs={self.date_bs})>"
+
+
+# Unique constraint: one record per court per date
+Index('idx_scraped_date_unique', 
+      CourtScrapedDate.court_identifier, 
+      CourtScrapedDate.date_bs,
+      unique=True)
+
+
 # Database connection helpers
 
 # Global engine instance (singleton pattern)
@@ -307,7 +345,7 @@ def get_engine(database_url=None):
 
 def get_session(engine):
     """
-    Create database session.
+    Create database session with explicit transaction control.
     
     Args:
         engine: SQLAlchemy engine instance
@@ -319,13 +357,14 @@ def get_session(engine):
         engine = get_engine()
         session = get_session(engine)
         
-        # Use session
-        courts = session.query(Court).all()
+        # Use session with explicit transactions
+        with session.begin():
+            courts = session.query(Court).all()
         
         # Close when done
         session.close()
     """
-    Session = sessionmaker(bind=engine)
+    Session = sessionmaker(bind=engine, autobegin=False)
     return Session()
 
 

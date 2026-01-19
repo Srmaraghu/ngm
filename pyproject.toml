@@ -15,6 +15,7 @@ boto3 = "^1.35.0"
 python-dotenv = "^1.2.1"
 psycopg2-binary = "^2.9.11"
 sqlalchemy = "^2.0.45"
+pytz = "^2025.2"
 
 
 [build-system]
