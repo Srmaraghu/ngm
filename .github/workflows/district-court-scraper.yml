@@ -2,8 +2,9 @@ name: District Court Cases Scraper
 
 on:
   schedule:
-    # Run daily at 6:15 AM UTC (12:00 PM Nepal Time)
-    - cron: '15 6 * * *'
+    # TEMPORARY: Run every 8 hours for backfilling (will revert to daily)
+    # Runs at 6:32 AM, 2:32 PM, 10:32 PM UTC (12:17 PM, 8:17 PM, 4:17 AM Nepal Time)
+    - cron: '32 6,14,22 * * *'
   workflow_dispatch: # Allow manual trigger
 
 jobs:

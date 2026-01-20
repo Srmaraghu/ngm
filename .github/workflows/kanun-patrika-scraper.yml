@@ -2,8 +2,8 @@ name: Kanun Patrika Scraper
 
 on:
   schedule:
-    # Run every 7 days at 2:00 AM UTC (7:45 AM Nepal Time)
-    - cron: '0 2 */7 * *'
+    # Run every day at 2:00 AM UTC (7:45 AM Nepal Time)
+    - cron: '0 2 * * *'
   workflow_dispatch: # Allow manual trigger
 
 jobs:

@@ -134,13 +134,13 @@ class DistrictCourtCasesSpider(scrapy.Spider):
                     
                     reg_date_parts = cells[2].get_text(separator='\n').strip().split('\n')
                     registration_date = normalize_date(normalize_whitespace(reg_date_parts[0])) if reg_date_parts else ""
-                    case_type = normalize_whitespace(cells[3].get_text())
+                    case_type = normalize_whitespace(cells[3].get_text())[:200]
                     plaintiff = normalize_whitespace(cells[4].get_text())
                     defendant = normalize_whitespace(cells[5].get_text())
-                    section = normalize_whitespace(cells[6].get_text()) or ""
-                    priority = normalize_whitespace(cells[7].get_text()) or ""
+                    section = normalize_whitespace(cells[6].get_text())[:200] or ""
+                    priority = normalize_whitespace(cells[7].get_text())[:400] or ""
                     remarks = normalize_whitespace(cells[8].get_text()) or ""
-                    decision_type = normalize_whitespace(cells[9].get_text()) or ""
+                    decision_type = normalize_whitespace(cells[9].get_text())[:200] or ""
                     
                     if not case_number:
                         continue
