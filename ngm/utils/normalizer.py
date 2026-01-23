@@ -51,17 +51,49 @@ def roman_to_nepali_numerals(text):
 
 
 def normalize_date(date_str):
-    """Normalize date format to use dashes and Roman numerals (e.g., २०८१/०९/२८ -> 2081-09-28)"""
+    """
+    Normalize date format to YYYY-MM-DD with zero-padded values and Roman numerals.
+    
+    Handles various input formats:
+    - २०८१/०९/२८ -> 2081-09-28
+    - 2081/9/28 -> 2081-09-28
+    - २०७८।०५।०८ -> 2078-05-08
+    - 2082.4.16 -> 2082-04-16
+    
+    Args:
+        date_str: Date string in various Nepali formats
+    
+    Returns:
+        Date string in YYYY-MM-DD format with zero-padding
+    """
     if not date_str:
         return date_str
     
     # Convert Nepali numerals to Roman
     date_str = nepali_to_roman_numerals(date_str)
     
+    # Normalize whitespace
+    date_str = normalize_whitespace(date_str)
+    
     # Replace various date separators with dashes
     date_str = date_str.replace('/', '-')
     date_str = date_str.replace('।', '-')  # Devanagari danda (U+0964)
     date_str = date_str.replace('|', '-')  # Pipe character
+    date_str = date_str.replace('.', '-')  # Period
+    date_str = date_str.replace(' ', '-')  # Space
+    
+    # Split into parts and zero-pad
+    parts = date_str.split('-')
+    if len(parts) == 3:
+        try:
+            # Zero-pad year (4 digits), month (2 digits), day (2 digits)
+            year = parts[0].zfill(4)
+            month = parts[1].zfill(2)
+            day = parts[2].zfill(2)
+            return f"{year}-{month}-{day}"
+        except (ValueError, IndexError):
+            # If parsing fails, return as-is
+            return date_str
     
     return date_str
 

@@ -54,6 +54,34 @@ class CourtCase(Base):
     
     Each case is uniquely identified by case_number + court_identifier.
     A case can have multiple hearings over time tracked in CourtCaseHearing table.
+    
+    Field Usage by Court Type:
+    
+    District Courts:
+    - case_type: मुद्दाको किसिम (case type)
+    - section: धारा (legal section)
+    - priority: प्राथमिकता (priority/fast-track status)
+    - case_id: Internal court ID
+    
+    Special Court:
+    - case_type: मुद्दा (case type)
+    - category: मुद्दाको किसिम (case category)
+    - division: फाँट (division assignment, e.g., "फाँट ख")
+    - case_status: मुद्दाको स्थिती (case status with verdict date if applicable)
+    - extra_data: Stores special court specific fields:
+      - pesi_tarekh: Array of hearing schedule dates
+      - sadharan_tarekh: Array of regular dates
+      - related_cases: Array of related case information
+      - plaintiff_advocates: Plaintiff lawyer names
+      - defendant_advocates: Defendant lawyer names
+      - judges_excluded: List of judges who cannot hear the case
+    
+    Supreme/High Courts:
+    - Similar to special court with court-specific variations
+    
+    Enrichment Status:
+    - status: "pending" (not enriched), "enriched" (detail scraped), "failed" (enrichment failed)
+    - When status="enriched", additional fields are populated from detail pages
     """
     __tablename__ = "court_cases"
     
